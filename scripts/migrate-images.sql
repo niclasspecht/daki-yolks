@@ -39,9 +39,11 @@ WHERE image REGEXP '^(ghcr[.]io/)?(parkervcp|pterodactyl)/yolks:(nodejs_(18|19|2
 SELECT image, COUNT(*) AS servers FROM servers GROUP BY image ORDER BY image;
 
 -- Servers (of any egg) whose image is still not in their egg's list. Empty is ideal.
+-- The panel stores slashes escaped (\/), which MariaDB's JSON functions do not unescape,
+-- so this is a plain text search.
 SELECT e.name AS egg, s.image, COUNT(*) AS servers
 FROM servers s JOIN eggs e ON e.id = s.egg_id
-WHERE NOT JSON_CONTAINS(JSON_EXTRACT(e.docker_images, '$.*'), JSON_QUOTE(s.image))
+WHERE LOCATE(CONCAT('"', s.image, '"'), REPLACE(e.docker_images, '\\/', '/')) = 0
 GROUP BY e.name, s.image ORDER BY e.name, s.image;
 
 -- Looks right: COMMIT;  Otherwise: ROLLBACK;
