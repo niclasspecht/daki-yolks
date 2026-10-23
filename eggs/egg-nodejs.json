@@ -11,14 +11,14 @@
     "features": [],
     "docker_images": {
         "Nodejs 26": "ghcr.io/niclasspecht/daki-yolks:nodejs_26",
-        "Nodejs 25 (EOL, no security updates)": "ghcr.io/ptero-eggs/yolks:nodejs_25",
+        "Nodejs 25 EOL - no security updates": "ghcr.io/ptero-eggs/yolks:nodejs_25",
         "Nodejs 24": "ghcr.io/niclasspecht/daki-yolks:nodejs_24",
-        "Nodejs 23 (EOL, no security updates)": "ghcr.io/ptero-eggs/yolks:nodejs_23",
+        "Nodejs 23 EOL - no security updates": "ghcr.io/ptero-eggs/yolks:nodejs_23",
         "Nodejs 22": "ghcr.io/niclasspecht/daki-yolks:nodejs_22",
-        "Nodejs 21 (EOL, no security updates)": "ghcr.io/ptero-eggs/yolks:nodejs_21",
-        "Nodejs 20 (EOL, no security updates)": "ghcr.io/ptero-eggs/yolks:nodejs_20",
-        "Nodejs 19 (EOL, no security updates)": "ghcr.io/ptero-eggs/yolks:nodejs_19",
-        "Nodejs 18 (EOL, no security updates)": "ghcr.io/ptero-eggs/yolks:nodejs_18"
+        "Nodejs 21 EOL - no security updates": "ghcr.io/ptero-eggs/yolks:nodejs_21",
+        "Nodejs 20 EOL - no security updates": "ghcr.io/ptero-eggs/yolks:nodejs_20",
+        "Nodejs 19 EOL - no security updates": "ghcr.io/ptero-eggs/yolks:nodejs_19",
+        "Nodejs 18 EOL - no security updates": "ghcr.io/ptero-eggs/yolks:nodejs_18"
     },
     "file_denylist": [],
     "startup": "if [[ ! -z \"{{STARTUP_CMD}}\" ]]; then echo \"Executing startup command: {{STARTUP_CMD}}\"; eval {{STARTUP_CMD}}; fi; if [[ ! -z \"{{SECOND_CMD}}\" ]]; then echo \"Executing second command: {{SECOND_CMD}}\"; eval {{SECOND_CMD}}; else echo \"No second command specified. Server will exit.\"; fi",
