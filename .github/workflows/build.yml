@@ -67,7 +67,13 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           base=$(printf "$BASE_TEMPLATE" "$VERSION")
-          digest=$(docker buildx imagetools inspect "$base" --format '{{json .Manifest}}' | jq -r .digest)
+          for attempt in 1 2 3 4 5; do
+            digest=$( (docker buildx imagetools inspect "$base" --format '{{json .Manifest}}' || true) | jq -r '.digest // empty' 2>/dev/null || true)
+            [[ "$digest" == sha256:* ]] && break
+            echo "Digest von $base nicht lesbar (Versuch $attempt), warte ..."
+            sleep $((attempt * 10))
+          done
+          [[ "$digest" == sha256:* ]] || { echo "::error::Digest von $base nicht lesbar"; exit 1; }
           current=$( (docker buildx imagetools inspect "$image:$TAG" --format '{{json .Image}}' 2>/dev/null || true) \
             | jq -r '[.. | objects | .Labels? // empty | .["org.opencontainers.image.base.digest"] // empty][0] // ""' 2>/dev/null || true)
 
@@ -75,13 +81,15 @@ jobs:
           echo "Neu:     $digest"
           echo "Gebaut:  ${current:-<keins>}"
 
+          if [ "$digest" != "$current" ]; then changed="Basis-Image neu"; else changed="Basis-Image unverändert"; fi
           if [ "$FORCE" = "true" ]; then
-            echo "Build erzwungen."; build=true
+            build=true; msg="$changed, Build erzwungen"
           elif [ "$digest" != "$current" ]; then
-            echo "Basis-Image hat sich geändert, baue neu."; build=true
+            build=true; msg="$changed, baue neu"
           else
-            echo "Basis-Image unverändert, nichts zu tun."; build=false
+            build=false; msg="$changed, nichts zu tun"
           fi
+          echo "::notice title=$TAG::$msg"
 
           {
             echo "image=$image"
