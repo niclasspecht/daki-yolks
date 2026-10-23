@@ -1,0 +1,8 @@
+# Hält die Action-Versionen aktuell und sorgt nebenbei für Repo-Aktivität
+# (GitHub pausiert geplante Workflows nach 60 Tagen ohne Aktivität).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

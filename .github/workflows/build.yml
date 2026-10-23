@@ -1,0 +1,139 @@
+# Gemeinsamer Build für nodejs.yml und python.yml.
+# Baut pro Version ein Multi-Arch-Image, testet es vor dem Push wie Wings
+# (Nicht-Root-User + STARTUP) und pusht nach ghcr.io/<owner>/<repo>:<family>_<version>.
+# Ohne force wird nur gebaut, wenn sich das Basis-Image auf Docker Hub geändert hat.
+name: build (shared)
+
+on:
+  workflow_call:
+    inputs:
+      family:
+        description: "Tag-Präfix und Ordner, z. B. nodejs"
+        type: string
+        required: true
+      versions:
+        description: 'JSON-Liste, z. B. ["22","24"]'
+        type: string
+        required: true
+      base:
+        description: "Basis-Image, %s = Version"
+        type: string
+        required: true
+      build_arg:
+        description: "Name des Versions-Build-Args"
+        type: string
+        required: true
+      test_startup:
+        description: "STARTUP-Befehl für den Smoke-Test"
+        type: string
+        required: true
+      test_expect:
+        description: "Erwartete Ausgabe im Smoke-Test, %s = Version"
+        type: string
+        required: true
+      force:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: "${{ inputs.family }}_${{ matrix.version }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(inputs.versions) }}
+    env:
+      TAG: "${{ inputs.family }}_${{ matrix.version }}"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Basis-Image prüfen
+        id: check
+        env:
+          BASE_TEMPLATE: ${{ inputs.base }}
+          VERSION: ${{ matrix.version }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          base=$(printf "$BASE_TEMPLATE" "$VERSION")
+          digest=$(docker buildx imagetools inspect "$base" --format '{{json .Manifest}}' | jq -r .digest)
+          current=$( (docker buildx imagetools inspect "$image:$TAG" --format '{{json .Image}}' 2>/dev/null || true) \
+            | jq -r '[.. | objects | .Labels? // empty | .["org.opencontainers.image.base.digest"] // empty][0] // ""' 2>/dev/null || true)
+
+          echo "Basis:   $base"
+          echo "Neu:     $digest"
+          echo "Gebaut:  ${current:-<keins>}"
+
+          if [ "$FORCE" = "true" ]; then
+            echo "Build erzwungen."; build=true
+          elif [ "$digest" != "$current" ]; then
+            echo "Basis-Image hat sich geändert, baue neu."; build=true
+          else
+            echo "Basis-Image unverändert, nichts zu tun."; build=false
+          fi
+
+          {
+            echo "image=$image"
+            echo "base=$base"
+            echo "digest=$digest"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+
+      - if: steps.check.outputs.build == 'true'
+        uses: docker/setup-qemu-action@v4
+
+      - if: steps.check.outputs.build == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Testbuild (amd64)
+        if: steps.check.outputs.build == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./${{ inputs.family }}
+          build-args: ${{ inputs.build_arg }}=${{ matrix.version }}
+          platforms: linux/amd64
+          pull: true
+          no-cache: true
+          provenance: false
+          load: true
+          tags: smoke-test:${{ env.TAG }}
+
+      - name: Smoke-Test wie Wings
+        if: steps.check.outputs.build == 'true'
+        env:
+          STARTUP_CMD: ${{ inputs.test_startup }}
+          EXPECT_TEMPLATE: ${{ inputs.test_expect }}
+          VERSION: ${{ matrix.version }}
+        run: |
+          expect=$(printf "$EXPECT_TEMPLATE" "$VERSION")
+          home="$RUNNER_TEMP/home-$TAG"; mkdir -p "$home"; chmod 777 "$home"
+          out=$(docker run --rm --user 988:988 -v "$home:/home/container" -e STARTUP="$STARTUP_CMD" "smoke-test:$TAG" 2>&1)
+          echo "$out"
+          grep -qF "$expect" <<< "$out" || { echo "::error::Erwartet '$expect' in der Ausgabe"; exit 1; }
+
+      - name: Build und Push (amd64 + arm64)
+        if: steps.check.outputs.build == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./${{ inputs.family }}
+          build-args: ${{ inputs.build_arg }}=${{ matrix.version }}
+          platforms: linux/amd64,linux/arm64
+          pull: true
+          provenance: false
+          push: true
+          tags: ${{ steps.check.outputs.image }}:${{ env.TAG }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.base.name=docker.io/library/${{ steps.check.outputs.base }}
+            org.opencontainers.image.base.digest=${{ steps.check.outputs.digest }}
