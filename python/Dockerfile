@@ -1,8 +1,10 @@
 ARG PYTHON_VERSION=3.14
 FROM python:${PYTHON_VERSION}-slim-trixie
 
+# less, openssh-client, patch and psmisc came in as recommends in the previous images.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl dnsutils ffmpeg g++ gcc git iproute2 procps tini \
+    ca-certificates curl dnsutils ffmpeg g++ gcc git iproute2 less \
+    openssh-client patch procps psmisc tini \
     && rm -rf /var/lib/apt/lists/*
 
 ENV USER=container HOME=/home/container

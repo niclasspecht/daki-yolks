@@ -7,7 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 tar tini tzdata zip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install --global npm@latest typescript ts-node @types/node
+# Pinned to the majors of the previous images: ts-node does not work with TypeScript 7.
+RUN npm install --global npm@11 typescript@6 ts-node @types/node
 
 ENV USER=container HOME=/home/container
 WORKDIR /home/container

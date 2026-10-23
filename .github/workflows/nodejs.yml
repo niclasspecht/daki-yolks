@@ -4,16 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "Alle Versionen neu bauen, auch ohne neues Basis-Image"
+        description: "Rebuild all versions, even if the base image is unchanged"
         type: boolean
         default: true
   schedule:
-    - cron: "17 3 * * 1"   # Montag: immer neu bauen (Debian-Pakete)
-    - cron: "47 */6 * * *" # alle 6 h: neu bauen, wenn node:<v>-trixie-slim neu ist
+    - cron: "17 3 * * 1"   # Monday: always rebuild (Debian package updates)
+    - cron: "47 */6 * * *" # every 6 h: rebuild if node:<v>-trixie-slim changed
   push:
     branches: [main]
     paths:
       - "nodejs/**"
+      - "tests/nodejs/**"
       - ".github/workflows/nodejs.yml"
       - ".github/workflows/build.yml"
 
@@ -33,6 +34,6 @@ jobs:
       versions: '["22", "24", "26"]'
       base: "node:%s-trixie-slim"
       build_arg: NODE_VERSION
-      test_startup: "npm -v && tsc -v"
+      test_startup: "npm -v && tsc -v && ts-node smoke.ts"
       test_expect: "Node.js Version: v%s."
       force: ${{ github.event_name == 'push' || inputs.force == true || github.event.schedule == '17 3 * * 1' }}
