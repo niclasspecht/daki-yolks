@@ -24,7 +24,7 @@ CMD ["/entrypoint.sh"]
 # for new Playwright releases on every weekly rebuild.
 FROM base AS playwright
 RUN npx --yes playwright-core@latest install-deps chromium firefox \
-    && apt-get install -y --no-install-recommends procps \
+    && apt-get install -y --no-install-recommends procps xauth \
     && rm -rf /var/lib/apt/lists/* /root/.npm /tmp/*
 
 # Default target: the plain image without browser libraries.
