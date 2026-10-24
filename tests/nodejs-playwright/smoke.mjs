@@ -1,6 +1,7 @@
 // Runs inside the built image under xvfb-run, the way a customer bot would use Playwright.
-// Launches every browser headless, plus Chromium headed on the virtual display,
-// renders Latin, CJK and emoji text and takes a screenshot.
+// Launches every browser headless (render Latin, CJK and emoji text, take a screenshot)
+// plus Chromium headed on the virtual display (render only: without a GPU, headed
+// Chromium on Xvfb cannot capture screenshots).
 import { chromium, firefox } from "playwright";
 
 const runs = [
@@ -16,9 +17,9 @@ for (const [type, options] of runs) {
   const page = await browser.newPage();
   await page.setContent("<h1>Daki ✓ 日本語 한국어 😀</h1>");
   const text = await page.textContent("h1");
-  const shot = await page.screenshot();
+  const shot = options.headless ? await page.screenshot() : null;
   await browser.close();
-  if (!text?.includes("Daki") || shot.length < 1000) {
+  if (!text?.includes("Daki") || (shot && shot.length < 1000)) {
     console.error(`${label} rendered nothing`);
     process.exit(1);
   }
