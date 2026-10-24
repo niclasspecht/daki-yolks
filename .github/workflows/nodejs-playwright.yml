@@ -36,6 +36,6 @@ jobs:
       versions: '["22", "24", "26"]'
       base: "node:%s-trixie-slim"
       build_arg: NODE_VERSION
-      test_startup: "npm install --no-save --no-audit --no-fund playwright && node node_modules/playwright-core/cli.js install chromium firefox && xvfb-run -a node smoke.mjs"
+      test_startup: "npm install --no-save --no-audit --no-fund playwright && node node_modules/playwright-core/cli.js install chromium firefox && xvfb-run -a -s \"-screen 0 1920x1080x24\" node smoke.mjs"
       test_expect: "Node.js Version: v%s."
       force: ${{ github.event_name == 'push' || inputs.force == true || github.event.schedule == '17 3 * * 1' }}
