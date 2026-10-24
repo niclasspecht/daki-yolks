@@ -1,0 +1,64 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-10-25T12:00:00+02:00",
+    "name": "NodeJS Playwright",
+    "author": "niclas@specht.email",
+    "description": "Node.js mit allen Systembibliotheken für Playwright (Chromium, Firefox), Xvfb und Fonts (CJK, Emoji). Installiert die passenden Browser beim Start automatisch, ohne Root.",
+    "features": [],
+    "docker_images": {
+        "Nodejs 26 Playwright": "ghcr.io/niclasspecht/daki-yolks:nodejs-playwright_26",
+        "Nodejs 24 Playwright": "ghcr.io/niclasspecht/daki-yolks:nodejs-playwright_24",
+        "Nodejs 22 Playwright": "ghcr.io/niclasspecht/daki-yolks:nodejs-playwright_22"
+    },
+    "file_denylist": [],
+    "startup": "if [[ ! -z \"{{STARTUP_CMD}}\" ]]; then echo \"Executing startup command: {{STARTUP_CMD}}\"; eval {{STARTUP_CMD}}; fi; if [[ ! -z \"{{PLAYWRIGHT_INSTALL}}\" ]]; then if [[ -f node_modules/playwright-core/cli.js ]]; then echo \"Installing Playwright browsers: {{PLAYWRIGHT_INSTALL}}\"; node node_modules/playwright-core/cli.js install {{PLAYWRIGHT_INSTALL}}; else echo \"Playwright not found in node_modules, skipping browser install.\"; fi; fi; if [[ ! -z \"{{SECOND_CMD}}\" ]]; then echo \"Executing second command: {{SECOND_CMD}}\"; eval {{SECOND_CMD}}; else echo \"No second command specified. Server will exit.\"; fi",
+    "config": {
+        "files": "{}",
+        "startup": "{\r\n    \"done\": \"\",\r\n    \"userInteraction\": []\r\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# Simple NodeJS Installation Script\n#\n# Server Files: /mnt/server\nmkdir -p /mnt/server\ncd /mnt/server\n\necho \"Installation complete - ready for user files\"\nexit 0",
+            "container": "debian:trixie-slim",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Startup Command 1",
+            "description": "First Command used to start the server.",
+            "env_variable": "STARTUP_CMD",
+            "default_value": "npm install --save --production",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:256",
+            "field_type": "text"
+        },
+        {
+            "name": "Playwright Browsers",
+            "description": "Browser, die vor dem Start mit der Playwright-Version aus node_modules installiert werden (z. B. \"chromium\", \"chromium firefox\" oder \"chromium --only-shell\" für weniger Speicherplatz). Leer lassen zum Deaktivieren. Bereits installierte Browser werden übersprungen.",
+            "env_variable": "PLAYWRIGHT_INSTALL",
+            "default_value": "chromium",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:128|regex:/^[a-z0-9 -]*$/",
+            "field_type": "text"
+        },
+        {
+            "name": "Startup Command 2",
+            "description": "Second Startup Command",
+            "env_variable": "SECOND_CMD",
+            "default_value": "node index.js",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:256",
+            "field_type": "text"
+        }
+    ]
+}

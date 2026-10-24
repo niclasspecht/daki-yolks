@@ -19,6 +19,14 @@ on:
         description: "Base image, %s = version"
         type: string
         required: true
+      context:
+        description: "Build context folder, defaults to family"
+        type: string
+        default: ""
+      target:
+        description: "Dockerfile stage to build, defaults to the last one"
+        type: string
+        default: ""
       build_arg:
         description: "Name of the version build arg"
         type: string
@@ -108,7 +116,8 @@ jobs:
         if: steps.check.outputs.build == 'true'
         uses: docker/build-push-action@v7
         with:
-          context: ./${{ inputs.family }}
+          context: ./${{ inputs.context || inputs.family }}
+          target: ${{ inputs.target }}
           build-args: ${{ inputs.build_arg }}=${{ matrix.version }}
           platforms: linux/amd64
           pull: true
@@ -140,7 +149,8 @@ jobs:
         if: steps.check.outputs.build == 'true'
         uses: docker/build-push-action@v7
         with:
-          context: ./${{ inputs.family }}
+          context: ./${{ inputs.context || inputs.family }}
+          target: ${{ inputs.target }}
           build-args: ${{ inputs.build_arg }}=${{ matrix.version }}
           platforms: linux/amd64,linux/arm64
           pull: true

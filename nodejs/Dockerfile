@@ -1,5 +1,5 @@
 ARG NODE_VERSION=24
-FROM node:${NODE_VERSION}-trixie-slim
+FROM node:${NODE_VERSION}-trixie-slim AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates curl dnsutils ffmpeg git iproute2 \
@@ -17,3 +17,15 @@ STOPSIGNAL SIGINT
 COPY --chown=root:root --chmod=755 entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/usr/bin/tini", "-g", "--"]
 CMD ["/entrypoint.sh"]
+
+# Playwright variant (nodejs-playwright_<version>): system libraries for Chromium and
+# Firefox, so customers can run `npx playwright install` without root.
+# Playwright resolves the package list for Debian 13 itself, so it stays correct
+# for new Playwright releases on every weekly rebuild.
+FROM base AS playwright
+RUN npx --yes playwright-core@latest install-deps chromium firefox \
+    && apt-get install -y --no-install-recommends procps \
+    && rm -rf /var/lib/apt/lists/* /root/.npm /tmp/*
+
+# Default target: the plain image without browser libraries.
+FROM base
