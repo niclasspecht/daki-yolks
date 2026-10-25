@@ -5,13 +5,14 @@
 <h1 align="center">Daki Yolks</h1>
 
 <p align="center">
-  Security-patched Pterodactyl images for Node.js and Python.<br>
+  Security-patched Pterodactyl images for Node.js and Python,<br>
+  plus ready-to-use custom images for common use cases.<br>
   Built and used by <a href="https://daki.cc">Daki Hosting</a>, free for everyone.
 </p>
 
 <p align="center">
   <a href="https://github.com/niclasspecht/daki-yolks/actions/workflows/nodejs.yml"><img src="https://github.com/niclasspecht/daki-yolks/actions/workflows/nodejs.yml/badge.svg" alt="build nodejs"></a>
-  <a href="https://github.com/niclasspecht/daki-yolks/actions/workflows/nodejs-playwright.yml"><img src="https://github.com/niclasspecht/daki-yolks/actions/workflows/nodejs-playwright.yml/badge.svg" alt="build nodejs-playwright"></a>
+  <a href="https://github.com/niclasspecht/daki-yolks/actions/workflows/custom-nodejs-playwright.yml"><img src="https://github.com/niclasspecht/daki-yolks/actions/workflows/custom-nodejs-playwright.yml/badge.svg" alt="build custom nodejs-playwright"></a>
   <a href="https://github.com/niclasspecht/daki-yolks/actions/workflows/python.yml"><img src="https://github.com/niclasspecht/daki-yolks/actions/workflows/python.yml/badge.svg" alt="build python"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <a href="https://discord.gg/daki"><img src="https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
@@ -39,16 +40,18 @@ Daki Yolks are drop-in replacements for those images:
 - **Tested.** Before every push the image is started the way Wings starts it (non-root user, `STARTUP` variable) and has to run a real TypeScript or Python script.
 - **Open.** Public on GHCR, no login needed, `linux/amd64` and `linux/arm64`. Use them on your own panel, no strings attached.
 
-## Images
+There are two kinds of images:
+
+- **[Base images](#base-images)** in [`base/`](base/) replace the ptero-eggs yolks one to one.
+- **[Custom images](#custom-images)** in [`custom/`](custom/) build on a base image and add what a specific use case needs, such as browser libraries for Playwright. Each comes with its own egg.
+
+## Base images
 
 | Language | Tag | Base image | Supported until |
 | --- | --- | --- | --- |
 | Node.js 26 | `ghcr.io/niclasspecht/daki-yolks:nodejs_26` | `node:26-trixie-slim` | April 2029 |
 | Node.js 24 | `ghcr.io/niclasspecht/daki-yolks:nodejs_24` | `node:24-trixie-slim` | April 2028 |
 | Node.js 22 | `ghcr.io/niclasspecht/daki-yolks:nodejs_22` | `node:22-trixie-slim` | April 2027 |
-| Node.js 26 + Playwright | `ghcr.io/niclasspecht/daki-yolks:nodejs-playwright_26` | `node:26-trixie-slim` | April 2029 |
-| Node.js 24 + Playwright | `ghcr.io/niclasspecht/daki-yolks:nodejs-playwright_24` | `node:24-trixie-slim` | April 2028 |
-| Node.js 22 + Playwright | `ghcr.io/niclasspecht/daki-yolks:nodejs-playwright_22` | `node:22-trixie-slim` | April 2027 |
 | Python 3.15 | `ghcr.io/niclasspecht/daki-yolks:python_3.15` | `python:3.15-slim-trixie` | October 2031 |
 | Python 3.14 | `ghcr.io/niclasspecht/daki-yolks:python_3.14` | `python:3.14-slim-trixie` | October 2030 |
 | Python 3.13 | `ghcr.io/niclasspecht/daki-yolks:python_3.13` | `python:3.13-slim-trixie` | October 2029 |
@@ -57,11 +60,19 @@ Daki Yolks are drop-in replacements for those images:
 
 **Node.js images** include `build-essential`, `git`, `ffmpeg`, `sqlite3`, `python3`, `curl`, `dig`, `ping`, `zip`, `tini` and the global npm packages `npm@11`, `typescript@6`, `ts-node` and `@types/node`. npm and TypeScript are pinned to the majors of the previous images, because `ts-node` does not work with TypeScript 7.
 
-**Node.js + Playwright images** are the Node.js images plus every system library Playwright needs for Chromium and Firefox (resolved by `playwright install-deps` for Debian 13), Xvfb for headed browsers (`xvfb-run -a -s "-screen 0 1920x1080x24" node index.js`; the default 8-bit screen breaks Chromium screenshots), fonts for CJK and emoji, `xauth` (for `xvfb-run`) and `procps`. Customers cannot run `--with-deps` themselves because servers run without root, so the libraries live in the image and the browsers themselves are installed per server with plain `npx playwright install chromium`, matching the Playwright version in their `node_modules`. The [Playwright egg](eggs/egg-nodejs-playwright.json) does this automatically on every start. Puppeteer works with the same libraries.
-
 **Python images** include `gcc`, `g++`, `git`, `ffmpeg`, `curl`, `dig`, `openssh-client`, `procps`, `psmisc`, `patch`, `less` and `tini`.
 
-End-of-life versions (Node.js 18–21, 23, 25 and Python 3.9, 3.10) are not built, because they no longer receive security fixes upstream. The eggs in this repository still list the old ptero-eggs images for them, clearly marked as EOL, so customers who depend on them can keep using them at their own risk.
+End-of-life versions (Node.js 18–21, 23, 25 and Python 3.9, 3.10) are not built, because they no longer receive security fixes upstream. The base eggs still list the old ptero-eggs images for them, clearly marked as EOL, so customers who depend on them can keep using them at their own risk.
+
+## Custom images
+
+Custom images start from a base image, so they get the same patches, and add the packages for one use case. They are rebuilt automatically whenever their base image changes. Every custom image has its own folder with a README, the egg and a smoke test.
+
+| Image | Tags | For | Egg |
+| --- | --- | --- | --- |
+| [Node.js + Playwright](custom/nodejs-playwright/) | `nodejs-playwright_26`, `_24`, `_22` | Browser automation with Playwright or Puppeteer (Chromium, Firefox) without root | [`egg-nodejs-playwright.json`](custom/nodejs-playwright/egg-nodejs-playwright.json) |
+
+All tags live under `ghcr.io/niclasspecht/daki-yolks`, for example `ghcr.io/niclasspecht/daki-yolks:nodejs-playwright_24`.
 
 ## Using the images
 
@@ -72,7 +83,10 @@ Nodejs 24|ghcr.io/niclasspecht/daki-yolks:nodejs_24
 Python 3.13|ghcr.io/niclasspecht/daki-yolks:python_3.13
 ```
 
-Or import the ready-made eggs from [`eggs/`](eggs/) (Admin → Nests → open egg → **Update Egg**).
+Or use the ready-made eggs:
+
+- **Base eggs** ([`base/nodejs`](base/nodejs/egg-nodejs.json), [`base/python`](base/python/egg-python.json)) replace your existing Node.js and Python eggs: Admin → Nests → open egg → **Update Egg**.
+- **Custom eggs** (in each [`custom/`](custom/) folder) are new eggs: Admin → Nests → **Import Egg**.
 
 **With Docker directly:**
 
@@ -93,16 +107,40 @@ When only the patch version changes (for example ptero-eggs `nodejs_24` → Daki
 
 After every rebuild the tag stays the same. A restart is enough for a server to get the latest patches.
 
+## Repository layout
+
+```
+base/                          drop-in replacements for the ptero-eggs yolks
+  nodejs/                      Dockerfile, entrypoint.sh, egg-nodejs.json, test/
+  python/                      Dockerfile, entrypoint.sh, egg-python.json, test/
+custom/                        use-case images on top of a base image
+  nodejs-playwright/           Dockerfile, egg-nodejs-playwright.json, test/, README.md
+scripts/                       prepull, migration and restart helpers for panel admins
+.github/workflows/
+  build.yml                    shared build, smoke test and push
+  nodejs.yml, python.yml       version lists of the base images
+  custom-<name>.yml            one workflow per custom image
+```
+
 ## How the builds work
 
 | Trigger | What happens |
 | --- | --- |
-| Every 6 hours | Compares each base image digest with the one the image was built from, and rebuilds only what changed |
-| Monday 03:17 UTC | Rebuilds every version |
-| Push to `main` | Rebuilds the changed language |
+| Every 6 hours | Compares each Docker Hub base image digest with the one the image was built from, and rebuilds only what changed |
+| Monday 03:17 UTC | Rebuilds every base image |
+| After a base build | Custom images check their Daki base image the same way and rebuild the versions that changed |
+| Push to `main` | Rebuilds the changed image folder |
 | Actions → **Run workflow** | Manual rebuild |
 
-Everything runs on free GitHub-hosted runners: [`build.yml`](.github/workflows/build.yml) is shared, [`nodejs.yml`](.github/workflows/nodejs.yml), [`nodejs-playwright.yml`](.github/workflows/nodejs-playwright.yml) and [`python.yml`](.github/workflows/python.yml) hold the version lists. To add a version, add it to `versions` there and add the line to the egg.
+Everything runs on free GitHub-hosted runners. Before every push the image is started like Wings starts it, with the image's `test/` folder as server files. To add a version, add it to `versions` in the workflow and add the line to the egg.
+
+### Adding a custom image
+
+1. Create `custom/<name>/` with a `Dockerfile` that starts `FROM ghcr.io/niclasspecht/daki-yolks:<base>_${VERSION}`.
+2. Add a smoke test in `custom/<name>/test/` that prints `smoke ok` only if the use case really works.
+3. Copy [`custom-nodejs-playwright.yml`](.github/workflows/custom-nodejs-playwright.yml) to `custom-<name>.yml` and adjust `family`, `path`, `base`, `versions` and the test command. `workflow_run` must name the workflow of the base image.
+4. Export the egg from the panel into `custom/<name>/egg-<name>.json` and add a short `README.md`.
+5. Add a row to [Custom images](#custom-images), the badge at the top and the tags to [`scripts/prepull.sh`](scripts/prepull.sh).
 
 ## About Daki Hosting
 
@@ -112,11 +150,11 @@ Everything runs on free GitHub-hosted runners: [`build.yml`](.github/workflows/b
 - **[Premium plans](https://daki.cc/products/paid-plans):** from €2/month on AMD Ryzen 9 9900X, DDR5 and NVMe.
 - **[Game servers](https://daki.cc/products/budget-game-servers)** and custom VPS or dedicated setups.
 
-These images run every Node.js and Python server at Daki.
+These images run every Node.js and Python server at Daki, and the custom images power the premium custom eggs.
 
 ## Contributing and support
 
-Issues and pull requests are welcome, whether it's a new version, a missing package or a bug.
+Issues and pull requests are welcome, whether it's a new version, a missing package, an idea for a custom image or a bug.
 
 Daki customers can get help on [Discord](https://discord.gg/daki) or through a [support ticket](https://billing.daki.cc/tickets/create).
 

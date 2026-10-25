@@ -1,4 +1,4 @@
-name: build nodejs-playwright
+name: build custom nodejs-playwright
 
 on:
   workflow_dispatch:
@@ -7,15 +7,17 @@ on:
         description: "Rebuild all versions, even if the base image is unchanged"
         type: boolean
         default: true
-  schedule:
-    - cron: "17 3 * * 1"   # Monday: always rebuild (Debian package updates)
-    - cron: "47 */6 * * *" # every 6 h: rebuild if node:<v>-trixie-slim changed
+  # Built on top of the Daki Node.js images: rebuild right after they were pushed.
+  # Without force, only versions whose nodejs_<v> image actually changed are rebuilt.
+  # The Monday full rebuild of the Node.js images therefore rebuilds these too.
+  workflow_run:
+    workflows: ["build nodejs"]
+    types: [completed]
   push:
     branches: [main]
     paths:
-      - "nodejs/**"
-      - "tests/nodejs-playwright/**"
-      - ".github/workflows/nodejs-playwright.yml"
+      - "custom/nodejs-playwright/**"
+      - ".github/workflows/custom-nodejs-playwright.yml"
       - ".github/workflows/build.yml"
 
 permissions:
@@ -28,14 +30,14 @@ concurrency:
 
 jobs:
   nodejs-playwright:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     uses: ./.github/workflows/build.yml
     with:
       family: nodejs-playwright
-      context: nodejs
-      target: playwright
+      path: custom/nodejs-playwright
       versions: '["22", "24", "26"]'
-      base: "node:%s-trixie-slim"
+      base: "ghcr.io/niclasspecht/daki-yolks:nodejs_%s"
       build_arg: NODE_VERSION
       test_startup: "npm install --no-save --no-audit --no-fund playwright && node node_modules/playwright-core/cli.js install chromium firefox && xvfb-run -a -s \"-screen 0 1920x1080x24\" node smoke.mjs"
       test_expect: "Node.js Version: v%s."
-      force: ${{ github.event_name == 'push' || inputs.force == true || github.event.schedule == '17 3 * * 1' }}
+      force: ${{ github.event_name == 'push' || inputs.force == true }}

@@ -13,8 +13,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "python/**"
-      - "tests/python/**"
+      - "base/python/**"
       - ".github/workflows/python.yml"
       - ".github/workflows/build.yml"
 
@@ -31,8 +30,9 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       family: python
+      path: base/python
       versions: '["3.11", "3.12", "3.13", "3.14", "3.15"]'
-      base: "python:%s-slim-trixie"
+      base: "docker.io/library/python:%s-slim-trixie"
       build_arg: PYTHON_VERSION
       test_startup: "pip --version && python smoke.py"
       test_expect: "Python %s."

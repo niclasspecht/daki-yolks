@@ -1,14 +1,19 @@
-# Shared build used by nodejs.yml and python.yml.
-# Builds one multi-arch image per version, smoke-tests it the way Wings runs it
-# (non-root user + STARTUP) and pushes it to ghcr.io/<owner>/<repo>:<family>_<version>.
-# Without force, a version is only rebuilt when its base image on Docker Hub has changed.
+# Shared build used by every image workflow (base/* and custom/*).
+# Builds one multi-arch image per version from <path>/Dockerfile, smoke-tests it the
+# way Wings runs it (non-root user + STARTUP, with <path>/test as the server files)
+# and pushes it to ghcr.io/<owner>/<repo>:<family>_<version>.
+# Without force, a version is only rebuilt when its base image has changed.
 name: build (shared)
 
 on:
   workflow_call:
     inputs:
       family:
-        description: "Tag prefix and build context folder, e.g. nodejs"
+        description: "Tag prefix, e.g. nodejs"
+        type: string
+        required: true
+      path:
+        description: "Image folder with Dockerfile and test/, e.g. base/nodejs"
         type: string
         required: true
       versions:
@@ -16,17 +21,9 @@ on:
         type: string
         required: true
       base:
-        description: "Base image, %s = version"
+        description: "Full base image reference, %s = version"
         type: string
         required: true
-      context:
-        description: "Build context folder, defaults to family"
-        type: string
-        default: ""
-      target:
-        description: "Dockerfile stage to build, defaults to the last one"
-        type: string
-        default: ""
       build_arg:
         description: "Name of the version build arg"
         type: string
@@ -116,8 +113,7 @@ jobs:
         if: steps.check.outputs.build == 'true'
         uses: docker/build-push-action@v7
         with:
-          context: ./${{ inputs.context || inputs.family }}
-          target: ${{ inputs.target }}
+          context: ./${{ inputs.path }}
           build-args: ${{ inputs.build_arg }}=${{ matrix.version }}
           platforms: linux/amd64
           pull: true
@@ -135,7 +131,7 @@ jobs:
         run: |
           expect=$(printf "$EXPECT_TEMPLATE" "$VERSION")
           home="$RUNNER_TEMP/home-$TAG"; mkdir -p "$home"
-          cp -r "tests/${{ inputs.family }}/." "$home/"
+          cp -r "${{ inputs.path }}/test/." "$home/"
           chmod -R a+rwX "$home"
           rc=0
           out=$(docker run --rm --user 988:988 -v "$home:/home/container" -e STARTUP="$STARTUP_CMD" "smoke-test:$TAG" 2>&1) || rc=$?
@@ -149,8 +145,7 @@ jobs:
         if: steps.check.outputs.build == 'true'
         uses: docker/build-push-action@v7
         with:
-          context: ./${{ inputs.context || inputs.family }}
-          target: ${{ inputs.target }}
+          context: ./${{ inputs.path }}
           build-args: ${{ inputs.build_arg }}=${{ matrix.version }}
           platforms: linux/amd64,linux/arm64
           pull: true
@@ -159,5 +154,5 @@ jobs:
           tags: ${{ steps.check.outputs.image }}:${{ env.TAG }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.base.name=docker.io/library/${{ steps.check.outputs.base }}
+            org.opencontainers.image.base.name=${{ steps.check.outputs.base }}
             org.opencontainers.image.base.digest=${{ steps.check.outputs.digest }}
