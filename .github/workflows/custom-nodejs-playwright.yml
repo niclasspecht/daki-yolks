@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "Rebuild all versions, even if the base image is unchanged"
+        description: "Push all versions, even if nothing changed"
         type: boolean
-        default: true
+        default: false
   # Built on top of the Daki Node.js images: rebuild right after they were pushed.
-  # Without force, only versions whose nodejs_<v> image actually changed are rebuilt.
-  # The Monday full rebuild of the Node.js images therefore rebuilds these too.
+  # Only versions whose nodejs_<v> image actually changed are rebuilt, so a Monday
+  # rebuild of the Node.js images only carries over here when it pushed new packages.
   workflow_run:
     workflows: ["build nodejs"]
     types: [completed]
@@ -40,4 +40,6 @@ jobs:
       build_arg: NODE_VERSION
       test_startup: "npm install --no-save --no-audit --no-fund playwright && node node_modules/playwright-core/cli.js install chromium firefox && xvfb-run -a -s \"-screen 0 1920x1080x24\" node smoke.mjs"
       test_expect: "Node.js Version: v%s."
-      force: ${{ github.event_name == 'push' || inputs.force == true }}
+      inventory: "node -v && npm ls --global --all"
+      rebuild: ${{ github.event_name != 'workflow_run' }}
+      force: ${{ inputs.force == true }}

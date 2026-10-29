@@ -35,7 +35,7 @@ Pterodactyl runs every server inside a Docker image, a so-called *yolk*. Most pa
 
 Daki Yolks are drop-in replacements for those images:
 
-- **Always patched.** Every 6 hours a workflow checks whether Docker Hub has published a new base image and rebuilds the affected versions. Every Monday all images are rebuilt to pick up Debian package updates.
+- **Always patched.** Every 6 hours a workflow checks whether Docker Hub has published a new base image and rebuilds the affected versions. Every Monday all images are rebuilt and tested, and pushed only when Debian, npm or pip packages actually changed.
 - **Compatible.** Same packages, entrypoint and behaviour as the ptero-eggs images, so existing servers keep working. You only swap the image name.
 - **Tested.** Before every push the image is started the way Wings starts it (non-root user, `STARTUP` variable) and has to run a real TypeScript or Python script.
 - **Open.** Public on GHCR, no login needed, `linux/amd64` and `linux/arm64`. Use them on your own panel, no strings attached.
@@ -107,6 +107,16 @@ When only the patch version changes (for example ptero-eggs `nodejs_24` → Daki
 
 After every rebuild the tag stays the same. A restart is enough for a server to get the latest patches.
 
+### Disk space on nodes
+
+When a tag gets a new build, the previous one stays on the node without a name until no container uses it anymore, and Docker never removes it by itself. Add a daily cleanup on every Wings node:
+
+```bash
+echo '30 4 * * * root docker image prune -f >/dev/null 2>&1' > /etc/cron.d/docker-image-prune
+```
+
+Without `-a` this only removes untagged images that no container (running or stopped) uses, so it never touches a server's image.
+
 ## Repository layout
 
 ```
@@ -127,10 +137,12 @@ scripts/                       prepull, migration and restart helpers for panel 
 | Trigger | What happens |
 | --- | --- |
 | Every 6 hours | Compares each Docker Hub base image digest with the one the image was built from, and rebuilds only what changed |
-| Monday 03:17 UTC | Rebuilds every base image |
+| Monday 03:17 UTC | Rebuilds and tests every base image, pushes only those whose packages changed |
 | After a base build | Custom images check their Daki base image the same way and rebuild the versions that changed |
-| Push to `main` | Rebuilds the changed image folder |
-| Actions → **Run workflow** | Manual rebuild |
+| Push to `main` | Rebuilds and tests the changed image folder, pushes when the image content changed |
+| Actions → **Run workflow** | Same as a push, tick *Push all versions* to push even unchanged images |
+
+Every image carries a fingerprint of its build files, Debian packages and npm or pip packages. A rebuild with the same fingerprint and base image is not pushed, so the tag keeps its digest and nodes do not download a new copy of the same image.
 
 Everything runs on free GitHub-hosted runners. Before every push the image is started like Wings starts it, with the image's `test/` folder as server files. To add a version, add it to `versions` in the workflow and add the line to the egg.
 

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "Rebuild all versions, even if the base image is unchanged"
+        description: "Push all versions, even if nothing changed"
         type: boolean
-        default: true
+        default: false
   schedule:
-    - cron: "17 3 * * 1"   # Monday: always rebuild (Debian package updates)
+    - cron: "17 3 * * 1"   # Monday: rebuild, push if packages changed
     - cron: "47 */6 * * *" # every 6 h: rebuild if python:<v>-slim-trixie changed
   push:
     branches: [main]
@@ -36,4 +36,6 @@ jobs:
       build_arg: PYTHON_VERSION
       test_startup: "pip --version && python smoke.py"
       test_expect: "Python %s."
-      force: ${{ github.event_name == 'push' || inputs.force == true || github.event.schedule == '17 3 * * 1' }}
+      inventory: "python --version && python -m pip list --format=freeze"
+      rebuild: ${{ github.event_name != 'schedule' || github.event.schedule == '17 3 * * 1' }}
+      force: ${{ inputs.force == true }}

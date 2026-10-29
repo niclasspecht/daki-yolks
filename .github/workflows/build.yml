@@ -2,7 +2,9 @@
 # Builds one multi-arch image per version from <path>/Dockerfile, smoke-tests it the
 # way Wings runs it (non-root user + STARTUP, with <path>/test as the server files)
 # and pushes it to ghcr.io/<owner>/<repo>:<family>_<version>.
-# Without force, a version is only rebuilt when its base image has changed.
+# Without rebuild, a version is only built when its base image has changed.
+# A built image is only pushed when its base image, installed packages or build files
+# differ from the published one, so nodes do not download identical images again.
 name: build (shared)
 
 on:
@@ -36,9 +38,18 @@ on:
         description: "Expected smoke test output, %s = version"
         type: string
         required: true
-      force:
+      inventory:
+        description: "Command that lists language packages, added to the dpkg list for the fingerprint"
+        type: string
+        required: true
+      rebuild:
+        description: "Build and test even if the base image is unchanged"
         type: boolean
         default: true
+      force:
+        description: "Push even if nothing changed"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -68,7 +79,7 @@ jobs:
         env:
           BASE_TEMPLATE: ${{ inputs.base }}
           VERSION: ${{ matrix.version }}
-          FORCE: ${{ inputs.force }}
+          REBUILD: ${{ inputs.rebuild }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           base=$(printf "$BASE_TEMPLATE" "$VERSION")
@@ -79,28 +90,31 @@ jobs:
             sleep $((attempt * 10))
           done
           [[ "$digest" == sha256:* ]] || { echo "::error::Could not read digest of $base"; exit 1; }
-          current=$( (docker buildx imagetools inspect "$image:$TAG" --format '{{json .Image}}' 2>/dev/null || true) \
-            | jq -r '[.. | objects | .Labels? // empty | .["org.opencontainers.image.base.digest"] // empty][0] // ""' 2>/dev/null || true)
+          published=$(docker buildx imagetools inspect "$image:$TAG" --format '{{json .Image}}' 2>/dev/null || true)
+          label() { jq -r --arg k "$1" '[.. | objects | .Labels? // empty | .[$k] // empty][0] // ""' <<< "$published" 2>/dev/null || true; }
+          current=$(label org.opencontainers.image.base.digest)
+          fingerprint=$(label cc.daki.yolks.fingerprint)
 
           echo "Base:     $base"
           echo "Upstream: $digest"
           echo "Built on: ${current:-<none>}"
 
-          if [ "$digest" != "$current" ]; then changed="base image changed"; else changed="base image unchanged"; fi
-          if [ "$FORCE" = "true" ]; then
-            build=true; msg="$changed, forced rebuild"
-          elif [ "$digest" != "$current" ]; then
-            build=true; msg="$changed, rebuilding"
+          if [ "$digest" != "$current" ]; then
+            base_changed=true; build=true
+          elif [ "$REBUILD" = "true" ]; then
+            base_changed=false; build=true
           else
-            build=false; msg="$changed, nothing to do"
+            base_changed=false; build=false
+            echo "::notice title=$TAG::base image unchanged, nothing to do"
           fi
-          echo "::notice title=$TAG::$msg"
 
           {
             echo "image=$image"
             echo "base=$base"
             echo "digest=$digest"
             echo "build=$build"
+            echo "base_changed=$base_changed"
+            echo "fingerprint=$fingerprint"
           } >> "$GITHUB_OUTPUT"
 
       - if: steps.check.outputs.build == 'true'
@@ -141,8 +155,42 @@ jobs:
             grep -qF "$want" <<< "$out" || { echo "::error::Expected '$want' in the output"; exit 1; }
           done
 
-      - name: Build and push (amd64 + arm64)
+      - name: Compare with published image
+        id: compare
         if: steps.check.outputs.build == 'true'
+        env:
+          INVENTORY: ${{ inputs.inventory }}
+          FORCE: ${{ inputs.force }}
+          BASE_CHANGED: ${{ steps.check.outputs.base_changed }}
+          PUBLISHED: ${{ steps.check.outputs.fingerprint }}
+        run: |
+          inventory="$RUNNER_TEMP/inventory-$TAG.txt"
+          {
+            (cd "${{ inputs.path }}" && find . -type f ! -path './test/*' ! -name '*.md' ! -name 'egg-*.json' -print0 | sort -z | xargs -0 sha256sum)
+            docker run --rm -e INVENTORY="$INVENTORY" --entrypoint sh "smoke-test:$TAG" \
+              -c 'dpkg-query -W -f="\${Package} \${Version} \${Architecture}\n" && eval "$INVENTORY"'
+          } > "$inventory"
+          fingerprint=sha256:$(sha256sum "$inventory" | cut -d' ' -f1)
+          echo "::group::Build files and packages ($(wc -l < "$inventory") lines)"
+          cat "$inventory"
+          echo "::endgroup::"
+          echo "Fingerprint: $fingerprint"
+          echo "Published:   ${PUBLISHED:-<none>}"
+
+          if [ "$FORCE" = "true" ]; then
+            push=true; msg="forced push"
+          elif [ "$BASE_CHANGED" = "true" ]; then
+            push=true; msg="base image changed, pushing"
+          elif [ "$fingerprint" != "$PUBLISHED" ]; then
+            push=true; msg="packages or build files changed, pushing"
+          else
+            push=false; msg="no changes, keeping the published image"
+          fi
+          echo "::notice title=$TAG::$msg"
+          { echo "push=$push"; echo "fingerprint=$fingerprint"; } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (amd64 + arm64)
+        if: steps.compare.outputs.push == 'true'
         uses: docker/build-push-action@v7
         with:
           context: ./${{ inputs.path }}
@@ -156,3 +204,4 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.base.name=${{ steps.check.outputs.base }}
             org.opencontainers.image.base.digest=${{ steps.check.outputs.digest }}
+            cc.daki.yolks.fingerprint=${{ steps.compare.outputs.fingerprint }}
