@@ -57,7 +57,7 @@ start() { # <password>
 wait_log() { # <text> [seconds]
     local i
     for i in $(seq 1 "${2:-60}"); do
-        logs | grep -qF -- "$1" && return 0
+        logs | grep -F -- "$1" >/dev/null && return 0
         sleep 1
     done
     return 1
@@ -85,7 +85,7 @@ docker pull -q postgres:18-alpine >/dev/null
 new_volume
 start "$PW1"
 wait_log "is ready on port" || fail "first start"
-logs | grep -qF "database system is ready to accept connections" || fail "done string missing"
+logs | grep -F "database system is ready to accept connections" >/dev/null || fail "done string missing"
 login "$PW1" || fail "login with PW1"
 login wrong-password-123 && fail "wrong password accepted"
 ok "first start, password login, wrong password rejected"
@@ -99,7 +99,7 @@ ok "console input reaches psql"
 # 3. "\q" (the egg's stop command) shuts down cleanly
 echo '\q' >&4
 wait_exit 30 || fail "server did not stop on \\q"
-logs | grep -qF "database system is shut down" || fail "no clean shutdown on \\q"
+logs | grep -F "database system is shut down" >/dev/null || fail "no clean shutdown on \\q"
 ok "stop via \\q is clean"
 
 # 4. Changing the password in the Startup tab: new one works, old one does not
@@ -111,7 +111,7 @@ ok "password change via Startup tab"
 
 # 5. SIGTERM (docker stop, node reboot) shuts down cleanly
 docker stop -t 30 "$NAME" >/dev/null
-logs | grep -qF "database system is shut down" || fail "no clean shutdown on SIGTERM"
+logs | grep -F "database system is shut down" >/dev/null || fail "no clean shutdown on SIGTERM"
 ok "SIGTERM shutdown is clean"
 
 # 6. An empty password later keeps the current one
@@ -135,7 +135,7 @@ real=$(sudo cat "$VOL/postgres_db/PG_VERSION")
 echo 99 | sudo tee "$VOL/postgres_db/PG_VERSION" >/dev/null
 start "$PW1"
 wait_exit 60 || fail "wrong major version did not exit"
-logs | grep -qF "but this image runs PostgreSQL" || fail "no version mismatch message"
+logs | grep -F "but this image runs PostgreSQL" >/dev/null || fail "no version mismatch message"
 echo "$real" | sudo tee "$VOL/postgres_db/PG_VERSION" >/dev/null
 start "$PW1"
 wait_log "is ready on port" || fail "start after version mismatch"
