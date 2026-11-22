@@ -5,7 +5,7 @@
 <h1 align="center">Daki Yolks</h1>
 
 <p align="center">
-  Security-patched Pterodactyl images for Node.js and Python,<br>
+  Security-patched Pterodactyl images for Node.js, Python and PostgreSQL,<br>
   plus ready-to-use custom images for common use cases.<br>
   Built and used by <a href="https://daki.cc">Daki Hosting</a>, free for everyone.
 </p>
@@ -14,6 +14,7 @@
   <a href="https://github.com/niclasspecht/daki-yolks/actions/workflows/nodejs.yml"><img src="https://github.com/niclasspecht/daki-yolks/actions/workflows/nodejs.yml/badge.svg" alt="build nodejs"></a>
   <a href="https://github.com/niclasspecht/daki-yolks/actions/workflows/custom-nodejs-playwright.yml"><img src="https://github.com/niclasspecht/daki-yolks/actions/workflows/custom-nodejs-playwright.yml/badge.svg" alt="build custom nodejs-playwright"></a>
   <a href="https://github.com/niclasspecht/daki-yolks/actions/workflows/python.yml"><img src="https://github.com/niclasspecht/daki-yolks/actions/workflows/python.yml/badge.svg" alt="build python"></a>
+  <a href="https://github.com/niclasspecht/daki-yolks/actions/workflows/postgres.yml"><img src="https://github.com/niclasspecht/daki-yolks/actions/workflows/postgres.yml/badge.svg" alt="build postgres"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <a href="https://discord.gg/daki"><img src="https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
@@ -37,7 +38,7 @@ Daki Yolks are drop-in replacements for those images:
 
 - **Always patched.** Every 6 hours a workflow checks whether Docker Hub has published a new base image and rebuilds the affected versions. Every Monday all images are rebuilt and tested, and pushed only when Debian, npm or pip packages actually changed.
 - **Compatible.** Same packages, entrypoint and behaviour as the ptero-eggs images, so existing servers keep working. You only swap the image name.
-- **Tested.** Before every push the image is started the way Wings starts it (non-root user, `STARTUP` variable) and has to run a real TypeScript or Python script.
+- **Tested.** Before every push the image is started the way Wings starts it (non-root user, `STARTUP` variable) and has to run a real TypeScript or Python script. PostgreSQL images additionally go through logins, password changes and shutdowns.
 - **Open.** Public on GHCR, no login needed, `linux/amd64` and `linux/arm64`. Use them on your own panel, no strings attached.
 
 There are two kinds of images:
@@ -57,12 +58,26 @@ There are two kinds of images:
 | Python 3.13 | `ghcr.io/niclasspecht/daki-yolks:python_3.13` | `python:3.13-slim-trixie` | October 2029 |
 | Python 3.12 | `ghcr.io/niclasspecht/daki-yolks:python_3.12` | `python:3.12-slim-trixie` | October 2028 |
 | Python 3.11 | `ghcr.io/niclasspecht/daki-yolks:python_3.11` | `python:3.11-slim-trixie` | October 2027 |
+| PostgreSQL 18 | `ghcr.io/niclasspecht/daki-yolks:postgres_18` | `postgres:18-alpine` | November 2030 |
+| PostgreSQL 17 | `ghcr.io/niclasspecht/daki-yolks:postgres_17` | `postgres:17-alpine` | November 2029 |
+| PostgreSQL 16 | `ghcr.io/niclasspecht/daki-yolks:postgres_16` | `postgres:16-alpine` | November 2028 |
+| PostgreSQL 15 | `ghcr.io/niclasspecht/daki-yolks:postgres_15` | `postgres:15-alpine` | November 2027 |
 
 **Node.js images** include `build-essential`, `git`, `ffmpeg`, `sqlite3`, `python3`, `curl`, `dig`, `ping`, `zip`, `tini` and the global npm packages `npm@11`, `typescript@6`, `ts-node` and `@types/node`. npm and TypeScript are pinned to the majors of the previous images, because `ts-node` does not work with TypeScript 7.
 
 **Python images** include `gcc`, `g++`, `git`, `ffmpeg`, `curl`, `dig`, `openssh-client`, `procps`, `psmisc`, `patch`, `less` and `tini`.
 
-End-of-life versions (Node.js 18–21, 23, 25 and Python 3.9, 3.10) are not built, because they no longer receive security fixes upstream. The base eggs still list the old ptero-eggs images for them, clearly marked as EOL, so customers who depend on them can keep using them at their own risk.
+**PostgreSQL images** are not a one-to-one copy of the ptero-eggs ones. They come with their own startup command `daki-postgres` and need the [PostgreSQL egg](base/postgres/egg-postgres.json):
+
+- **Customers set their own superuser password** in the Startup tab. It is applied on every start. Left empty on the first start, a random password is printed in the console. There is no shared default password.
+- **Changing the password can't break the server.** The console (`psql`) uses the container-internal socket instead of the password, which in the ptero-eggs egg made the server stop as soon as the password was changed.
+- **The database is created on the first start** by the image itself, so it always matches the selected version. Starting a database with the wrong major version stops with a clear message instead of touching the data.
+- **Clean shutdowns** on `\q` (the egg's stop command) and on SIGTERM.
+- Remote logins use `scram-sha-256`. The rule allowing them from everywhere sits under `# Custom rules` in `postgres_db/pg_hba.conf`, ready to be narrowed down to an app's IP.
+
+Data directories from the ptero-eggs egg keep working with the image of the same version, after the server's startup command is set to `daki-postgres` (Admin → Servers → Startup). Besides the smoke test, every PostgreSQL build runs [`test/extended.sh`](base/postgres/test/extended.sh), which covers all of the above.
+
+End-of-life versions (Node.js 18–21, 23, 25, Python 3.9, 3.10 and PostgreSQL 14 and older) are not built, because they no longer receive security fixes upstream. The Node.js and Python eggs still list the old ptero-eggs images for them, clearly marked as EOL, so customers who depend on them can keep using them at their own risk.
 
 ## Custom images
 
@@ -85,7 +100,7 @@ Python 3.13|ghcr.io/niclasspecht/daki-yolks:python_3.13
 
 Or use the ready-made eggs:
 
-- **Base eggs** ([`base/nodejs`](base/nodejs/egg-nodejs.json), [`base/python`](base/python/egg-python.json)) replace your existing Node.js and Python eggs: Admin → Nests → open egg → **Update Egg**.
+- **Base eggs** ([`base/nodejs`](base/nodejs/egg-nodejs.json), [`base/python`](base/python/egg-python.json)) replace your existing Node.js and Python eggs: Admin → Nests → open egg → **Update Egg**. The [PostgreSQL egg](base/postgres/egg-postgres.json) can replace the ptero-eggs one the same way; existing servers also need the new startup command (see [PostgreSQL images](#base-images)).
 - **Custom eggs** (in each [`custom/`](custom/) folder) are new eggs: Admin → Nests → **Import Egg**.
 
 **With Docker directly:**
@@ -123,12 +138,14 @@ Without `-a` this only removes untagged images that no container (running or sto
 base/                          drop-in replacements for the ptero-eggs yolks
   nodejs/                      Dockerfile, entrypoint.sh, egg-nodejs.json, test/
   python/                      Dockerfile, entrypoint.sh, egg-python.json, test/
+  postgres/                    Dockerfile, entrypoint.sh, daki-postgres, egg-postgres.json, test/
 custom/                        use-case images on top of a base image
   nodejs-playwright/           Dockerfile, egg-nodejs-playwright.json, test/, README.md
 scripts/                       prepull, migration and restart helpers for panel admins
 .github/workflows/
   build.yml                    shared build, smoke test and push
-  nodejs.yml, python.yml       version lists of the base images
+  nodejs.yml, python.yml,      version lists of the base images
+  postgres.yml
   custom-<name>.yml            one workflow per custom image
 ```
 

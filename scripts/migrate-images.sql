@@ -5,6 +5,8 @@
 --   Built versions (Node 22/24/26, Python 3.11-3.15) -> ghcr.io/niclasspecht/daki-yolks
 --   EOL versions on older yolk names (parkervcp, pterodactyl) -> ghcr.io/ptero-eggs/yolks
 --   EOL versions already on ptero-eggs stay as they are.
+--   PostgreSQL is left out on purpose: the Daki postgres images need the startup command
+--   of the Daki PostgreSQL egg (daki-postgres), so switch those servers one by one.
 --
 -- Backup first: mysqldump -u root -p panel servers > ~/servers-backup-$(date +%F).sql
 -- Run:          mysql -u root -p panel, then: source migrate-images.sql
