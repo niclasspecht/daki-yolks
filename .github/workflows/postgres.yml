@@ -1,0 +1,48 @@
+name: build postgres
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Push all versions, even if nothing changed"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "27 3 * * 1"   # Monday: rebuild, push if packages changed
+    - cron: "57 */6 * * *" # every 6 h: rebuild if postgres:<v>-alpine changed
+  push:
+    branches: [main]
+    paths:
+      - "base/postgres/**"
+      - ".github/workflows/postgres.yml"
+      - ".github/workflows/build.yml"
+  # Pull requests are built and tested, but never pushed (see build.yml).
+  pull_request:
+    paths:
+      - "base/postgres/**"
+      - ".github/workflows/postgres.yml"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  postgres:
+    uses: ./.github/workflows/build.yml
+    with:
+      family: postgres
+      path: base/postgres
+      versions: '["15", "16", "17", "18"]'
+      base: "docker.io/library/postgres:%s-alpine"
+      build_arg: PG_MAJOR
+      test_startup: "env SERVER_PORT=25432 sh -c 'daki-postgres && echo smoke ok'"
+      test_expect: "PostgreSQL %s is ready on port"
+      inventory: "postgres -V && apk info -v | sort"
+      test_script: base/postgres/test/extended.sh
+      rebuild: ${{ github.event_name != 'schedule' || github.event.schedule == '27 3 * * 1' }}
+      force: ${{ inputs.force == true }}

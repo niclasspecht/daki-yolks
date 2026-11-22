@@ -1,0 +1,153 @@
+#!/bin/bash
+# Startup command of the Daki PostgreSQL egg. Runs as PID 1 (see entrypoint.sh).
+#
+# Differences to the ptero-eggs PostgreSQL egg:
+# - initdb runs on the first start inside this image instead of in the installer, so the
+#   data directory always matches the version picked in the Startup tab.
+# - The console (psql) connects over the container-internal Unix socket with trust auth
+#   instead of the superuser password. Changing the password can no longer break the start.
+# - The "Superuser Password" variable is applied on every start, so customers can change
+#   it in the Startup tab. Empty on the first start = random password, no shared default.
+# - The data directory version is checked against the image before PostgreSQL starts.
+# - "\q" (the egg's stop command) and SIGTERM shut PostgreSQL down cleanly.
+set -uo pipefail
+
+DATA=/home/container/postgres_db
+RUN_DIR=$DATA/run
+PORT=${SERVER_PORT:?SERVER_PORT is not set}
+SUPERUSER=${PGUSER:-postgres}
+NEW_PASSWORD=${PGPASSWORD:-}
+MAJOR=$(postgres -V | sed -E 's/^[^0-9]*([0-9]+).*/\1/')
+
+# libpq would pick PGPASSWORD up by itself; the console does not need it.
+unset PGPASSWORD
+
+say() { echo "[daki] $*"; }
+
+if ! getent passwd "$(id -u)" >/dev/null 2>&1; then
+    say "error: no passwd entry for UID $(id -u), initdb cannot run."
+    exit 1
+fi
+
+# --- 1. Create the data directory (first start only) -----------------------------------
+if [ ! -s "$DATA/PG_VERSION" ]; then
+    if [ -e "$DATA" ] && [ -n "$(ls -A "$DATA" 2>/dev/null)" ]; then
+        say "error: $DATA exists but is not a PostgreSQL data directory. Not touching it."
+        exit 1
+    fi
+
+    password=$NEW_PASSWORD
+    generated=0
+    if [ -z "$password" ]; then
+        password=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
+        generated=1
+    fi
+
+    say "Creating a new PostgreSQL $MAJOR database (superuser \"$SUPERUSER\") ..."
+    mkdir -p "$DATA"
+    pwfile=$(mktemp)
+    printf '%s\n' "$password" >"$pwfile"
+    if ! initdb -D "$DATA" -U "$SUPERUSER" --pwfile="$pwfile" --encoding=UTF8 --locale=C \
+            --auth-local=trust --auth-host=scram-sha-256 >/tmp/initdb.log 2>&1; then
+        rm -f "$pwfile"
+        cat /tmp/initdb.log
+        say "error: initdb failed."
+        exit 1
+    fi
+    rm -f "$pwfile"
+
+    cat >>"$DATA/pg_hba.conf" <<'EOF'
+
+# Custom rules: password logins from everywhere.
+# Tip: restrict this to your application's IP, e.g. 203.0.113.5/32, then restart.
+host    all             all             0.0.0.0/0               scram-sha-256
+host    all             all             ::/0                    scram-sha-256
+EOF
+
+    if [ "$generated" = 1 ]; then
+        say "Generated superuser password: $password"
+        say "To use your own password, set \"Superuser Password\" in the Startup tab and restart."
+    fi
+fi
+
+# --- 2. Check the version ----------------------------------------------------------------
+DATA_MAJOR=$(cat "$DATA/PG_VERSION")
+if [ "$DATA_MAJOR" != "$MAJOR" ]; then
+    say "error: your database was created with PostgreSQL $DATA_MAJOR, but this image runs PostgreSQL $MAJOR."
+    say "Switch the Docker image back to PostgreSQL $DATA_MAJOR in the Startup tab,"
+    say "or move your data with pg_dump into a new PostgreSQL $MAJOR server."
+    exit 1
+fi
+
+# --- 3. Allow the console over the socket ------------------------------------------------
+# Data directories from the ptero-eggs egg have "local ... md5", and the first matching
+# pg_hba line wins, so a trust line goes on top.
+if [ "$(awk '$1=="local"{print $4; exit}' "$DATA/pg_hba.conf")" != "trust" ]; then
+    {
+        echo '# Console access via the container-internal socket (not reachable from outside).'
+        echo 'local   all             all                                     trust'
+        cat "$DATA/pg_hba.conf"
+    } >"$DATA/pg_hba.conf.new" && chmod 600 "$DATA/pg_hba.conf.new" \
+        && mv "$DATA/pg_hba.conf.new" "$DATA/pg_hba.conf"
+fi
+
+# --- 4. Start ----------------------------------------------------------------------------
+mkdir -p "$RUN_DIR"
+postgres -D "$DATA" -p "$PORT" \
+    -c listen_addresses='*' \
+    -c unix_socket_directories="$RUN_DIR" \
+    -c external_pid_file="$RUN_DIR/postgres.pid" &
+PG_PID=$!
+CONSOLE_PID=
+
+stop_all() {
+    trap - TERM INT
+    [ -n "$CONSOLE_PID" ] && kill "$CONSOLE_PID" 2>/dev/null
+    if kill -0 "$PG_PID" 2>/dev/null; then
+        say "Stopping PostgreSQL ..."
+        pg_ctl -D "$DATA" stop -m fast >/dev/null 2>&1 || kill -INT "$PG_PID" 2>/dev/null
+    fi
+    wait "$PG_PID"
+    exit 0
+}
+trap stop_all TERM INT
+
+until pg_isready -q -h "$RUN_DIR" -p "$PORT"; do
+    if ! kill -0 "$PG_PID" 2>/dev/null; then
+        say "error: PostgreSQL stopped during startup, see the log above."
+        exit 1
+    fi
+    sleep 1
+done
+
+# --- 5. Apply the password from the Startup tab -------------------------------------------
+# psql variables quote safely; log_min_error_statement keeps the password out of the log
+# if the statement fails.
+if [ -n "$NEW_PASSWORD" ]; then
+    if psql -X -q -h "$RUN_DIR" -p "$PORT" -U "$SUPERUSER" -d postgres -v ON_ERROR_STOP=1 \
+            -v role="$SUPERUSER" -v pw="$NEW_PASSWORD" >/dev/null 2>&1 <<'SQL'
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+ALTER ROLE :"role" WITH PASSWORD :'pw';
+SQL
+    then
+        say "Superuser password from the Startup tab is active."
+    else
+        say "warning: could not set the superuser password from the Startup tab."
+    fi
+fi
+
+# --- 6. Console --------------------------------------------------------------------------
+say "PostgreSQL $MAJOR is ready on port $PORT. You can type SQL here (\\l lists databases)."
+
+# Background jobs get /dev/null as stdin otherwise; the panel console has to reach psql.
+exec 3<&0
+psql -X -h "$RUN_DIR" -p "$PORT" -U "$SUPERUSER" -d postgres <&3 &
+CONSOLE_PID=$!
+exec 3<&-
+
+# If PostgreSQL dies, end the console too, so the panel shows the server as stopped.
+( while kill -0 "$PG_PID" 2>/dev/null; do sleep 5; done; kill "$CONSOLE_PID" 2>/dev/null ) &
+
+wait "$CONSOLE_PID"
+stop_all

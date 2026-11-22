@@ -42,6 +42,10 @@ on:
         description: "Command that lists language packages, added to the dpkg list for the fingerprint"
         type: string
         required: true
+      test_script:
+        description: "Optional extended test, called with the built image tag, e.g. base/postgres/test/extended.sh"
+        type: string
+        default: ""
       rebuild:
         description: "Build and test even if the base image is unchanged"
         type: boolean
@@ -155,6 +159,10 @@ jobs:
             grep -qF "$want" <<< "$out" || { echo "::error::Expected '$want' in the output"; exit 1; }
           done
 
+      - name: Extended test
+        if: steps.check.outputs.build == 'true' && inputs.test_script != ''
+        run: bash "${{ inputs.test_script }}" "smoke-test:$TAG"
+
       - name: Compare with published image
         id: compare
         if: steps.check.outputs.build == 'true'
@@ -168,7 +176,7 @@ jobs:
           {
             (cd "${{ inputs.path }}" && find . -type f ! -path './test/*' ! -name '*.md' ! -name 'egg-*.json' -print0 | sort -z | xargs -0 sha256sum)
             docker run --rm -e INVENTORY="$INVENTORY" --entrypoint sh "smoke-test:$TAG" \
-              -c 'dpkg-query -W -f="\${Package} \${Version} \${Architecture}\n" && eval "$INVENTORY"'
+              -c 'if command -v dpkg-query >/dev/null; then dpkg-query -W -f="\${Package} \${Version} \${Architecture}\n" || exit 1; fi && eval "$INVENTORY"'
           } > "$inventory"
           fingerprint=sha256:$(sha256sum "$inventory" | cut -d' ' -f1)
           echo "::group::Build files and packages ($(wc -l < "$inventory") lines)"
@@ -190,7 +198,8 @@ jobs:
           { echo "push=$push"; echo "fingerprint=$fingerprint"; } >> "$GITHUB_OUTPUT"
 
       - name: Build and push (amd64 + arm64)
-        if: steps.compare.outputs.push == 'true'
+        # Pull requests are only built and tested, never pushed.
+        if: steps.compare.outputs.push == 'true' && github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
           context: ./${{ inputs.path }}

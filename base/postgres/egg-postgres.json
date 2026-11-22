@@ -1,0 +1,55 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-11-22T14:00:00+01:00",
+    "name": "PostgreSQL",
+    "author": "niclas@specht.email",
+    "description": "PostgreSQL database server. Pick the version in the Startup tab before the first start. The superuser password can be changed in the Startup tab at any time.",
+    "features": [],
+    "docker_images": {
+        "PostgreSQL 18": "ghcr.io/niclasspecht/daki-yolks:postgres_18",
+        "PostgreSQL 17": "ghcr.io/niclasspecht/daki-yolks:postgres_17",
+        "PostgreSQL 16": "ghcr.io/niclasspecht/daki-yolks:postgres_16",
+        "PostgreSQL 15": "ghcr.io/niclasspecht/daki-yolks:postgres_15"
+    },
+    "file_denylist": [],
+    "startup": "daki-postgres",
+    "config": {
+        "files": "{}",
+        "startup": "{\r\n    \"done\": \"database system is ready to accept connections\"\r\n}",
+        "logs": "{}",
+        "stop": "\\q"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/ash\r\n# The database is created on the first start by the runtime image,\r\n# so it always matches the PostgreSQL version selected in the Startup tab.\r\nmkdir -p /mnt/server\r\necho \"Done. The database is created on the first start.\"",
+            "container": "alpine:3.22",
+            "entrypoint": "ash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Superuser Name",
+            "description": "Name of the PostgreSQL superuser. Only used when the database is created on the first start.",
+            "env_variable": "PGUSER",
+            "default_value": "postgres",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|max:32|regex:/^[a-z_][a-z0-9_]*$/",
+            "field_type": "text"
+        },
+        {
+            "name": "Superuser Password",
+            "description": "Password of the superuser. It is applied on every start: change it here (not with ALTER USER) and restart the server. Leave it empty before the first start to get a random password in the console.",
+            "env_variable": "PGPASSWORD",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|min:12|max:100",
+            "field_type": "text"
+        }
+    ]
+}
